@@ -27,13 +27,6 @@ impl Coord {
         let y = rng.gen_range(-1.0..1.0);
         Self::new(x, y)
     }
-
-    pub fn scale(&self, width: usize, height: usize) -> [f64; 2] {
-        let x = self.x as f64 / width as f64; // [0:1]
-        let y = self.y as f64 / height as f64; // [0:1]
-
-        [x, y].map(|coord| coord * 2. - 1.) // [-1:1]
-    }
 }
 
 impl Add<Speed> for Coord {
@@ -185,7 +178,16 @@ fn main() {
         let now = Instant::now();
 
         // reset the buffer to black entirely
-        buffer.fill(0);
+        for coord in 0..(width * height) {
+            let (r, g, b) = unrgb(buffer[coord]);
+            buffer[coord] = rgb(
+                r.saturating_sub(5),
+                g.saturating_sub(5),
+                b.saturating_add(5),
+            );
+        }
+
+        // buffer.fill(0);
 
         // update and insert all the particle in the buffer
         for particle in particles.iter_mut() {
