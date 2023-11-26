@@ -82,15 +82,13 @@ impl From<(i8, i8)> for Speed {
 struct Particle {
     coord: Coord,
     speed: Speed,
-    ttl: u32,
 }
 
 impl Particle {
-    pub fn new(x: f32, y: f32, ttl: u32) -> Self {
+    pub fn new() -> Self {
         Self {
-            coord: Coord::new(x, y),
+            coord: Coord::rand(),
             speed: Speed { x: 0.0, y: 0.0 },
-            ttl,
         }
     }
 
@@ -99,15 +97,10 @@ impl Particle {
 
         // The particle escaped the canvas or died by its old age
         // We should re-insert it into the canvas
-        if !(-1.0..=1.0).contains(&self.coord.x)
-            || !(-1.0..=1.0).contains(&self.coord.y)
-            || self.ttl == 0
-        {
+        if !(-1.0..=1.0).contains(&self.coord.x) || !(-1.0..=1.0).contains(&self.coord.y) {
             self.coord = Coord::rand();
-            self.ttl = param.ttl;
         }
 
-        self.ttl -= 1;
         let direction = param.noise.get([self.coord.x as f64, self.coord.y as f64]) * 180.;
         let direction = direction.to_radians() as f32;
         self.coord.x += direction.cos() / 1000.;
@@ -131,15 +124,13 @@ impl Particle {
     }
 
     pub fn colorize(&self, param: &Param) -> u32 {
-        let ttl_ratio = self.ttl as f32 / param.ttl as f32;
-        hue_to_rgb(ttl_ratio * 360., 1.0, 1.0)
+        hue_to_rgb(360., 1.0, 1.0)
     }
 }
 
 struct Param {
     noise: Perlin,
     iteration_speed: u8,
-    ttl: u32,
     width: usize,
     height: usize,
 }
@@ -162,14 +153,12 @@ fn main() {
     let param = Param {
         noise: perlin,
         iteration_speed: 5,
-        ttl: u32::MAX,
         width,
         height,
     };
 
     for _ in 0..nb_particles {
-        // With a ttl of zero, everything will be regenerated on the update call later
-        let mut particle = Particle::new(0.0, 0.0, 0);
+        let mut particle = Particle::new();
         particle.update(&param);
         particles.push(particle);
     }
