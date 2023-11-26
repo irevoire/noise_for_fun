@@ -1,26 +1,30 @@
-use std::ops::{Add, AddAssign};
+use std::{
+    ops::{Add, AddAssign},
+    time::{Duration, Instant},
+};
 
 use minifb::{Window, WindowOptions};
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
 
+/// A coordinate in the [-1:1] space
 #[derive(Debug, Clone, Copy)]
 struct Coord {
-    x: u16,
-    y: u16,
+    x: f32,
+    y: f32,
 }
 
 impl Coord {
-    pub fn new(x: impl TryInto<u16>, y: impl TryInto<u16>) -> Self {
+    pub fn new(x: impl TryInto<f32>, y: impl TryInto<f32>) -> Self {
         Self {
             x: x.try_into().map_err(|_| ()).unwrap(),
             y: y.try_into().map_err(|_| ()).unwrap(),
         }
     }
-    pub fn rand(param: &Param) -> Self {
+    pub fn rand() -> Self {
         let mut rng = rand::thread_rng();
-        let x = rng.gen_range(0..param.width);
-        let y = rng.gen_range(0..param.height);
+        let x = rng.gen_range(-1.0..1.0);
+        let y = rng.gen_range(-1.0..1.0);
         Self::new(x, y)
     }
 
@@ -36,18 +40,10 @@ impl Add<Speed> for Coord {
     type Output = Self;
 
     fn add(self, rhs: Speed) -> Self::Output {
-        let x = if rhs.x.is_negative() {
-            self.x - ((-rhs.x) as u16)
-        } else {
-            self.x + rhs.x as u16
-        };
-        let y = if rhs.y.is_negative() {
-            self.y - ((-rhs.y) as u16)
-        } else {
-            self.y + rhs.y as u16
-        };
-
-        Self { x, y }
+        Self {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
     }
 }
 
@@ -59,30 +55,27 @@ impl AddAssign<Speed> for Coord {
 
 #[derive(Debug, Default, Clone, Copy)]
 struct Speed {
-    x: i8,
-    y: i8,
+    x: f32,
+    y: f32,
 }
 
 impl Speed {
-    pub fn new(x: i8, y: i8) -> Self {
-        Self { x, y }
-    }
-}
-
-impl Add<(i8, i8)> for Speed {
-    type Output = Self;
-
-    fn add(self, (x, y): (i8, i8)) -> Self::Output {
+    pub fn new(x: impl TryInto<f32>, y: impl TryInto<f32>) -> Self {
         Self {
-            x: self.x + x,
-            y: self.y + y,
+            x: x.try_into().map_err(|_| ()).unwrap(),
+            y: y.try_into().map_err(|_| ()).unwrap(),
         }
     }
 }
 
-impl AddAssign<(i8, i8)> for Speed {
-    fn add_assign(&mut self, rhs: (i8, i8)) {
-        *self = *self + rhs;
+impl Add<(f32, f32)> for Speed {
+    type Output = Self;
+
+    fn add(self, (x, y): (f32, f32)) -> Self::Output {
+        Self {
+            x: self.x + x,
+            y: self.y + y,
+        }
     }
 }
 
@@ -96,14 +89,14 @@ impl From<(i8, i8)> for Speed {
 struct Particle {
     coord: Coord,
     speed: Speed,
-    ttl: u8,
+    ttl: u32,
 }
 
 impl Particle {
-    pub fn new(x: u16, y: u16, ttl: u8) -> Self {
+    pub fn new(x: f32, y: f32, ttl: u32) -> Self {
         Self {
-            coord: Coord { x, y },
-            speed: Speed { x: 0, y: 0 },
+            coord: Coord::new(x, y),
+            speed: Speed { x: 0.0, y: 0.0 },
             ttl,
         }
     }
@@ -113,28 +106,39 @@ impl Particle {
 
         // The particle escaped the canvas or died by its old age
         // We should re-insert it into the canvas
-        if self.coord.x as usize >= param.width
-            || self.coord.y as usize >= param.height
+        if !(-1.0..=1.0).contains(&self.coord.x)
+            || !(-1.0..=1.0).contains(&self.coord.y)
             || self.ttl == 0
         {
-            self.coord = Coord::rand(param);
+            self.coord = Coord::rand();
             self.ttl = param.ttl;
         }
 
         self.ttl -= 1;
-        let direction = param.noise.get(self.coord.scale(param.width, param.height)) * 180.;
-        self.speed =
-            convert_radian_speed_to_cardinal_speed(param.iteration_speed, direction.to_radians())
-                .into();
+        let direction = param.noise.get([self.coord.x as f64, self.coord.y as f64]) * 180.;
+        let direction = direction.to_radians() as f32;
+        self.coord.x += direction.cos() / 1000.;
+        self.coord.y += direction.sin() / 1000.;
+        // self.speed =
+        //     convert_radian_speed_to_cardinal_speed(param.iteration_speed, direction.to_radians())
+        //         .into();
     }
 
     pub fn to_coord(&self, param: &Param) -> usize {
-        self.coord.y as usize * param.width + self.coord.x as usize
+        // range [0:2]
+        let x = self.coord.x + 1.0;
+        let y = self.coord.y + 1.0;
+
+        // range [0:width]
+        let x = x / 2. * (param.width - 1) as f32;
+        // range [0:height]
+        let y = y / 2. * (param.height - 1) as f32;
+
+        x as usize + param.width * y as usize
     }
 
     pub fn colorize(&self, param: &Param) -> u32 {
         let ttl_ratio = self.ttl as f32 / param.ttl as f32;
-        // dbg!(ttl_ratio);
         hue_to_rgb(ttl_ratio * 360., 1.0, 1.0)
     }
 }
@@ -142,22 +146,17 @@ impl Particle {
 struct Param {
     noise: Perlin,
     iteration_speed: u8,
-    ttl: u8,
+    ttl: u32,
     width: usize,
     height: usize,
-}
-
-fn convert_radian_speed_to_cardinal_speed(speed: u8, direction: f64) -> (i8, i8) {
-    (
-        (direction.cos() * speed as f64) as i8, // x
-        (direction.sin() * speed as f64) as i8, // y
-    )
 }
 
 fn main() {
     let width = 1080;
     let height = 800;
-    let nb_particles = 100_000;
+    let framerate = Duration::from_secs(1) / 60;
+    let nb_particles = 400_000;
+    // let nb_particles = 1;
 
     let mut buffer = vec![0; width * height];
 
@@ -170,18 +169,21 @@ fn main() {
     let param = Param {
         noise: perlin,
         iteration_speed: 5,
-        ttl: 1,
+        ttl: u32::MAX,
         width,
         height,
     };
 
-    for i in 0..nb_particles {
-        let mut particle = Particle::new(0, 0, 0);
+    for _ in 0..nb_particles {
+        // With a ttl of zero, everything will be regenerated on the update call later
+        let mut particle = Particle::new(0.0, 0.0, 0);
         particle.update(&param);
         particles.push(particle);
     }
 
     loop {
+        let now = Instant::now();
+
         // reset the buffer to black entirely
         buffer.fill(0);
 
@@ -192,13 +194,16 @@ fn main() {
             buffer[particle.to_coord(&param)] = particle.colorize(&param);
         }
 
-        dbg!(&particles[0]);
+        // dbg!(&particles[0]);
 
         window.update_with_buffer(&buffer, width, height).unwrap();
-        std::thread::sleep_ms(1000 / 30);
-        // std::thread::sleep_ms(100);
 
-        println!("Printed one frame");
+        let elapsed = now.elapsed();
+        if elapsed >= framerate {
+            println!("We're late by {:?}", elapsed - framerate);
+        } else {
+            std::thread::sleep(framerate - elapsed);
+        }
     }
 }
 
@@ -220,7 +225,7 @@ pub fn hue_to_rgb(hue: f32, saturation: f32, value: f32) -> u32 {
     assert!((0.0..=1.0).contains(&value), "bad value: {}", value);
 
     let c: f32 = saturation * value;
-    let x: f32 = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs()) as f32;
+    let x: f32 = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs());
     let m: f32 = value - c;
     let (r, g, b) = match hue as u32 {
         0..=59 | 360 => (c, x, 0.0),
@@ -233,79 +238,4 @@ pub fn hue_to_rgb(hue: f32, saturation: f32, value: f32) -> u32 {
     };
     let (r, g, b) = ((r + m) * 255.0, (g + m) * 255.0, (b + m) * 255.0);
     ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
-}
-
-#[cfg(test)]
-mod test {
-    use std::f64::consts::PI;
-
-    use insta::assert_debug_snapshot;
-
-    use super::*;
-
-    #[test]
-    fn convert_direction() {
-        assert_debug_snapshot!(convert_radian_speed_to_cardinal_speed(2, 0.), @r###"
-        (
-            2,
-            0,
-        )
-        "###);
-
-        assert_debug_snapshot!(convert_radian_speed_to_cardinal_speed(2, PI / 4.), @r###"
-        (
-            1,
-            1,
-        )
-        "###);
-
-        assert_debug_snapshot!(convert_radian_speed_to_cardinal_speed(2, PI / 2.), @r###"
-        (
-            0,
-            2,
-        )
-        "###);
-
-        assert_debug_snapshot!(convert_radian_speed_to_cardinal_speed(2, 3. * PI / 4.), @r###"
-        (
-            -1,
-            1,
-        )
-        "###);
-
-        assert_debug_snapshot!(convert_radian_speed_to_cardinal_speed(2, PI), @r###"
-        (
-            -2,
-            0,
-        )
-        "###);
-
-        assert_debug_snapshot!(convert_radian_speed_to_cardinal_speed(2, 5. * PI / 4.), @r###"
-        (
-            -1,
-            -1,
-        )
-        "###);
-
-        assert_debug_snapshot!(convert_radian_speed_to_cardinal_speed(2, 3. * PI / 2.), @r###"
-        (
-            0,
-            -2,
-        )
-        "###);
-
-        assert_debug_snapshot!(convert_radian_speed_to_cardinal_speed(2, 7. * PI / 4.), @r###"
-        (
-            1,
-            -1,
-        )
-        "###);
-
-        assert_debug_snapshot!(convert_radian_speed_to_cardinal_speed(2, 2. * PI), @r###"
-        (
-            2,
-            0,
-        )
-        "###);
-    }
 }
