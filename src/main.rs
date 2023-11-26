@@ -5,6 +5,7 @@ use std::{
 
 use minifb::{Window, WindowOptions};
 use noise::{NoiseFn, Perlin};
+use pastel::{Color, RGBA};
 use rand::prelude::*;
 
 /// A coordinate in the [-1:1] space
@@ -123,8 +124,14 @@ impl Particle {
         x as usize + param.width * y as usize
     }
 
-    pub fn colorize(&self, param: &Param) -> u32 {
-        hue_to_rgb(360., 1.0, 1.0)
+    pub fn colorize(&self, param: &Param) -> Color {
+        Color::red()
+        // pastel::HSLA {
+        //     h: 360.,
+        //     s: 1.0,
+        //     l: 1.0,
+        //     alpha: 0.,
+        // }
     }
 }
 
@@ -139,7 +146,7 @@ fn main() {
     let width = 1080;
     let height = 800;
     let framerate = Duration::from_secs(1) / 60;
-    let nb_particles = 400_000;
+    let nb_particles = 200_000;
     // let nb_particles = 1;
 
     let mut buffer = vec![0; width * height];
@@ -166,23 +173,20 @@ fn main() {
     loop {
         let now = Instant::now();
 
-        // reset the buffer to black entirely
-        for coord in 0..(width * height) {
-            let (r, g, b) = unrgb(buffer[coord]);
-            buffer[coord] = rgb(
-                r.saturating_sub(5),
-                g.saturating_sub(5),
-                b.saturating_add(5),
-            );
+        // Make a funny trail
+        for buf in buffer.iter_mut() {
+            let color = u32_to_color(*buf);
+            *buf = color.rotate_hue(1.).to_u32();
         }
 
+        // reset the buffer to black entirely
         // buffer.fill(0);
 
         // update and insert all the particle in the buffer
         for particle in particles.iter_mut() {
             particle.update(&param);
 
-            buffer[particle.to_coord(&param)] = particle.colorize(&param);
+            buffer[particle.to_coord(&param)] = particle.colorize(&param).to_u32();
         }
 
         // dbg!(&particles[0]);
@@ -198,8 +202,12 @@ fn main() {
     }
 }
 
-pub fn rgb(r: u32, g: u32, b: u32) -> u32 {
-    (r << 16) | (g << 8) | b
+pub fn u32_to_color(n: u32) -> Color {
+    let r = (n >> 16) & 0xff;
+    let g = (n >> 8) & 0xff;
+    let b = n & 0xff;
+
+    Color::from_rgb(r as u8, g as u8, b as u8)
 }
 
 pub fn unrgb(n: u32) -> (u32, u32, u32) {
