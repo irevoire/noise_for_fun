@@ -4,7 +4,10 @@ use std::{
 };
 
 use minifb::{Window, WindowOptions};
-use noise::{Fbm, NoiseFn, Perlin};
+use noise::{
+    Checkerboard, Fbm, HybridMulti, NoiseFn, OpenSimplex, Perlin, PerlinSurflet, RidgedMulti,
+    Simplex, SuperSimplex, Worley,
+};
 use pastel::Color;
 use rand::prelude::*;
 use rayon::prelude::*;
@@ -117,6 +120,14 @@ fn main() {
     let mut particles = Vec::with_capacity(width * height);
 
     // let noise = Perlin::new(14);
+    // let noise = PerlinSurflet::new(14);
+    // let noise = Checkerboard::new(14).set_size(32);
+    // let noise = HybridMulti::<Perlin>::new(14);
+    // let noise = OpenSimplex::new(14);
+    // let noise = RidgedMulti::<Perlin>::new(14);
+    // let noise = Simplex::new(14);
+    // let noise = SuperSimplex::new(14);
+    // let noise = Worley::new(14); // can't parallelize with this one
     let noise = Fbm::<Perlin>::new(14);
 
     let mut param = Param {
