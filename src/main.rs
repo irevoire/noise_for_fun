@@ -1,5 +1,5 @@
 use std::{
-    ops::{Add, AddAssign},
+    sync::atomic::{AtomicU32, Ordering},
     time::{Duration, Instant},
 };
 
@@ -7,6 +7,7 @@ use minifb::{Window, WindowOptions};
 use noise::{Fbm, NoiseFn, Perlin};
 use pastel::Color;
 use rand::prelude::*;
+use rayon::prelude::*;
 
 trait Noise2D: NoiseFn<f64, 2> {}
 impl<T> Noise2D for T where T: NoiseFn<f64, 2> {}
@@ -137,20 +138,23 @@ fn main() {
         let now = Instant::now();
 
         // Make a funny trail
-        for buf in buffer.iter_mut() {
+        buffer.par_iter_mut().for_each(|buf| {
             let color = u32_to_color(*buf);
             *buf = color.rotate_hue(1.).to_u32();
-        }
+        });
 
         // reset the buffer to black entirely
         // buffer.fill(0);
 
+        let shared_buffer: &[AtomicU32] = unsafe { std::mem::transmute(buffer.as_slice()) };
+
         // update and insert all the particle in the buffer
-        for particle in particles.iter_mut() {
+        particles.par_iter_mut().for_each(|particle| {
             particle.update(&param);
 
-            buffer[particle.to_coord(&param)] = particle.colorize(&param).to_u32();
-        }
+            shared_buffer[particle.to_coord(&param)]
+                .store(particle.colorize(&param).to_u32(), Ordering::Relaxed);
+        });
 
         // dbg!(&particles[0]);
 
