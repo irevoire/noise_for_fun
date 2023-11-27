@@ -11,6 +11,9 @@ use rand::prelude::*;
 trait Noise2D: NoiseFn<f64, 2> {}
 impl<T> Noise2D for T where T: NoiseFn<f64, 2> {}
 
+trait Noise3D: NoiseFn<f64, 3> {}
+impl<T> Noise3D for T where T: NoiseFn<f64, 3> {}
+
 /// A coordinate in the [-1:1] space
 #[derive(Debug, Clone, Copy)]
 struct Coord {
@@ -45,8 +48,8 @@ impl Particle {
         }
     }
 
-    pub fn update<Noise: Noise2D>(&mut self, param: &Param<Noise>) {
-        let direction = param.noise.get([self.coord.x as f64, self.coord.y as f64]) * 180.;
+    pub fn update<Noise: Noise3D>(&mut self, param: &Param<Noise>) {
+        let direction = param.noise_get(self.coord.x, self.coord.y) * 180.;
         let direction = direction.to_radians() as f32;
         self.coord.x += direction.cos() / 1000.;
         self.coord.y += direction.sin() / 1000.;
@@ -58,7 +61,7 @@ impl Particle {
         }
     }
 
-    pub fn to_coord<Noise: Noise2D>(&self, param: &Param<Noise>) -> usize {
+    pub fn to_coord<Noise>(&self, param: &Param<Noise>) -> usize {
         // range [0:2]
         let x = self.coord.x + 1.0;
         let y = self.coord.y + 1.0;
@@ -71,7 +74,7 @@ impl Particle {
         x as usize + param.width * y as usize
     }
 
-    pub fn colorize<Noise: Noise2D>(&self, param: &Param<Noise>) -> Color {
+    pub fn colorize<Noise>(&self, param: &Param<Noise>) -> Color {
         Color::red()
         // pastel::HSLA {
         //     h: 360.,
@@ -82,11 +85,21 @@ impl Particle {
     }
 }
 
-struct Param<Noise: Noise2D> {
+struct Param<Noise> {
     noise: Noise,
     iteration_speed: u8,
+    iteration: u16,
     width: usize,
     height: usize,
+}
+
+impl<Noise: Noise3D> Param<Noise> {
+    pub fn noise_get(&self, x: f32, y: f32) -> f64 {
+        // we must bring back self.iteration in the range [-1:1]
+        // now it's in the range [0:1]
+        let iteration = self.iteration as f64 / u16::MAX as f64;
+        self.noise.get([x as f64, y as f64, iteration * 2. - 1.])
+    }
 }
 
 fn main() {
@@ -102,12 +115,13 @@ fn main() {
 
     let mut particles = Vec::with_capacity(width * height);
 
-    // let perlin = Perlin::new(14);
-    let fbm = Fbm::<Perlin>::new(14);
+    // let noise = Perlin::new(14);
+    let noise = Fbm::<Perlin>::new(14);
 
-    let param = Param {
-        noise: fbm,
+    let mut param = Param {
+        noise,
         iteration_speed: 5,
+        iteration: 0,
         width,
         height,
     };
@@ -119,16 +133,17 @@ fn main() {
     }
 
     loop {
+        param.iteration += 1;
         let now = Instant::now();
 
         // Make a funny trail
-        // for buf in buffer.iter_mut() {
-        //     let color = u32_to_color(*buf);
-        //     *buf = color.rotate_hue(1.).to_u32();
-        // }
+        for buf in buffer.iter_mut() {
+            let color = u32_to_color(*buf);
+            *buf = color.rotate_hue(1.).to_u32();
+        }
 
         // reset the buffer to black entirely
-        buffer.fill(0);
+        // buffer.fill(0);
 
         // update and insert all the particle in the buffer
         for particle in particles.iter_mut() {
