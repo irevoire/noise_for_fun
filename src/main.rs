@@ -4,9 +4,12 @@ use std::{
 };
 
 use minifb::{Window, WindowOptions};
-use noise::{NoiseFn, Perlin};
+use noise::{Fbm, NoiseFn, Perlin};
 use pastel::Color;
 use rand::prelude::*;
+
+trait Noise2D: NoiseFn<f64, 2> {}
+impl<T> Noise2D for T where T: NoiseFn<f64, 2> {}
 
 /// A coordinate in the [-1:1] space
 #[derive(Debug, Clone, Copy)]
@@ -42,7 +45,7 @@ impl Particle {
         }
     }
 
-    pub fn update(&mut self, param: &Param) {
+    pub fn update<Noise: Noise2D>(&mut self, param: &Param<Noise>) {
         let direction = param.noise.get([self.coord.x as f64, self.coord.y as f64]) * 180.;
         let direction = direction.to_radians() as f32;
         self.coord.x += direction.cos() / 1000.;
@@ -55,7 +58,7 @@ impl Particle {
         }
     }
 
-    pub fn to_coord(&self, param: &Param) -> usize {
+    pub fn to_coord<Noise: Noise2D>(&self, param: &Param<Noise>) -> usize {
         // range [0:2]
         let x = self.coord.x + 1.0;
         let y = self.coord.y + 1.0;
@@ -68,7 +71,7 @@ impl Particle {
         x as usize + param.width * y as usize
     }
 
-    pub fn colorize(&self, param: &Param) -> Color {
+    pub fn colorize<Noise: Noise2D>(&self, param: &Param<Noise>) -> Color {
         Color::red()
         // pastel::HSLA {
         //     h: 360.,
@@ -79,8 +82,8 @@ impl Particle {
     }
 }
 
-struct Param {
-    noise: Perlin,
+struct Param<Noise: Noise2D> {
+    noise: Noise,
     iteration_speed: u8,
     width: usize,
     height: usize,
@@ -99,10 +102,11 @@ fn main() {
 
     let mut particles = Vec::with_capacity(width * height);
 
-    let perlin = Perlin::new(14);
+    // let perlin = Perlin::new(14);
+    let fbm = Fbm::<Perlin>::new(14);
 
     let param = Param {
-        noise: perlin,
+        noise: fbm,
         iteration_speed: 5,
         width,
         height,
