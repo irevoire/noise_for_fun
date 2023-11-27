@@ -5,7 +5,7 @@ use std::{
 
 use minifb::{Window, WindowOptions};
 use noise::{NoiseFn, Perlin};
-use pastel::{Color, RGBA};
+use pastel::Color;
 use rand::prelude::*;
 
 /// A coordinate in the [-1:1] space
@@ -30,85 +30,29 @@ impl Coord {
     }
 }
 
-impl Add<Speed> for Coord {
-    type Output = Self;
-
-    fn add(self, rhs: Speed) -> Self::Output {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-
-impl AddAssign<Speed> for Coord {
-    fn add_assign(&mut self, rhs: Speed) {
-        *self = *self + rhs;
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-struct Speed {
-    x: f32,
-    y: f32,
-}
-
-impl Speed {
-    pub fn new(x: impl TryInto<f32>, y: impl TryInto<f32>) -> Self {
-        Self {
-            x: x.try_into().map_err(|_| ()).unwrap(),
-            y: y.try_into().map_err(|_| ()).unwrap(),
-        }
-    }
-}
-
-impl Add<(f32, f32)> for Speed {
-    type Output = Self;
-
-    fn add(self, (x, y): (f32, f32)) -> Self::Output {
-        Self {
-            x: self.x + x,
-            y: self.y + y,
-        }
-    }
-}
-
-impl From<(i8, i8)> for Speed {
-    fn from((x, y): (i8, i8)) -> Self {
-        Self::new(x, y)
-    }
-}
-
 #[derive(Debug, Clone)]
 struct Particle {
     coord: Coord,
-    speed: Speed,
 }
 
 impl Particle {
     pub fn new() -> Self {
         Self {
             coord: Coord::rand(),
-            speed: Speed { x: 0.0, y: 0.0 },
         }
     }
 
     pub fn update(&mut self, param: &Param) {
-        self.coord += self.speed;
-
-        // The particle escaped the canvas or died by its old age
-        // We should re-insert it into the canvas
-        if !(-1.0..=1.0).contains(&self.coord.x) || !(-1.0..=1.0).contains(&self.coord.y) {
-            self.coord = Coord::rand();
-        }
-
         let direction = param.noise.get([self.coord.x as f64, self.coord.y as f64]) * 180.;
         let direction = direction.to_radians() as f32;
         self.coord.x += direction.cos() / 1000.;
         self.coord.y += direction.sin() / 1000.;
-        // self.speed =
-        //     convert_radian_speed_to_cardinal_speed(param.iteration_speed, direction.to_radians())
-        //         .into();
+
+        // The particle escaped the canvas
+        // We should re-insert it into the canvas
+        if !(-1.0..=1.0).contains(&self.coord.x) || !(-1.0..=1.0).contains(&self.coord.y) {
+            self.coord = Coord::rand();
+        }
     }
 
     pub fn to_coord(&self, param: &Param) -> usize {
@@ -174,13 +118,13 @@ fn main() {
         let now = Instant::now();
 
         // Make a funny trail
-        for buf in buffer.iter_mut() {
-            let color = u32_to_color(*buf);
-            *buf = color.rotate_hue(1.).to_u32();
-        }
+        // for buf in buffer.iter_mut() {
+        //     let color = u32_to_color(*buf);
+        //     *buf = color.rotate_hue(1.).to_u32();
+        // }
 
         // reset the buffer to black entirely
-        // buffer.fill(0);
+        buffer.fill(0);
 
         // update and insert all the particle in the buffer
         for particle in particles.iter_mut() {
